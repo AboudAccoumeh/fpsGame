@@ -1,0 +1,326 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+<title>three.js Demo</title>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
+<style type="text/css">
+*{
+padding:0;
+margin:0;
+}
+body{
+overflow:hidden;
+}
+canvas{
+position:absolute;
+top:0;
+left:0;
+}
+#p{
+position:absolute;
+top:0;
+left:0;
+color:#fff;
+padding:50x;
+font-weight:900;
+font-size:30px;
+}
+</style>
+</head>
+<body>
+<canvas id="canvasgl"></canvas>
+<canvas id="canvas"></canvas>
+<p id="p">0</p>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script type="text/javascript" src="https://threejs.org/examples/js/controls/OrbitControls.js"></script>
+<script type="text/javascript">
+var ar = 1.65;
+var cgl = document.getElementById("canvasgl");
+var c = document.getElementById("canvas");
+var ctx = c.getContext("2d");
+var player = {
+	dirAngle:0,
+	isMoving:false,
+	vel:0.1,
+	velForce:0
+};
+
+var otXY = {x:null,y:null};
+var omXY = {x:null,y:null};
+var touches = [];
+var btns = [];
+btns.push(new Button({x:0,y:0,width:1,height:1,type:"rect"}));
+btns[0].ontouchstart = function(v){
+	otXY.x = v.x;
+	otXY.y = v.y;
+}
+btns[0].ontouchmove = function(v){
+	var deltaXY = {
+		x: v.x - otXY.x,
+		y: v.y - otXY.y
+	}
+	camera.rotation.order = "YXZ";
+	camera.rotation.x -= deltaXY.y*0.005;
+	camera.rotation.y -= deltaXY.x*0.005;
+	if(camera.rotation.x>Math.PI/2){
+		camera.rotation.x = Math.PI/2;
+	}
+	else if(camera.rotation.x<-Math.PI/2){
+		camera.rotation.x = -Math.PI/2;
+	}
+	
+	otXY.x = v.x;
+	otXY.y = v.y;
+}
+btns.push(new Button({x:0.2,y:0.7,r:50,type:"circle"}));
+btns[1].area2 = {x:0,y:0};
+btns[1].ontouchstart = btns[1].ontouchmove = function(v){
+	var dx = v.x - this.area.x*window.innerWidth;
+	var dy = v.y - this.area.y*window.innerHeight;
+	var angle = player.dirAngle = Math.atan2(dy,dx);
+	var distance = Math.sqrt(dx*dx + dy*dy);
+	if(distance > this.area.r){distance = this.area.r;}
+	player.velForce = distance / this.area.r;
+	player.isMoving = true;
+	this.area2.x = Math.cos(angle)*distance;
+	this.area2.y = Math.sin(angle)*distance;
+}
+btns[1].ontouchend = btns[1].ontouchcancel = function(v){
+	player.isMoving = false;
+	player.velForce = 0;
+	this.area2.x = 0;
+	this.area2.y = 0;
+}
+btns[1].draw = function(w,h){
+	ctx.globalAlpha = 0.4;
+	circle(this.area.x*w,this.area.y*h,this.area.r,"#fff");
+	ctx.globalAlpha = 0.75;
+	circle(this.area.x*w,this.area.y*h,this.area.r,null,"#fff");
+	ctx.globalAlpha = 0.4;
+	circle(this.area.x*w+this.area2.x,this.area.y*h+this.area2.y,this.area.r*0.25,"#fff");
+	ctx.globalAlpha = 0.75;
+	circle(this.area.x*w+this.area2.x,this.area.y*h+this.area2.y,this.area.r*0.25,null,"#fff");
+	ctx.globalAlpha = 1.0;
+}
+
+
+btns.reverse();
+/*events*/
+window.addEventListener("load",function(){resize();animate(0)});
+window.addEventListener("resize",function(){resize();});
+window.addEventListener("touchstart",function(e){
+	e = e || window.event;
+	try{e.preventDefault();}catch(er){}
+	for(var i=0;i<e.changedTouches.length;i++){
+		touches[e.changedTouches[i].identifier] = e.changedTouches[i];
+	}
+	for(var t=0;t<touches.length;t++){
+		if(!touches[t]){continue;}
+		var x = touches[t].clientX;
+		var y = touches[t].clientY;
+		for(var b=0;b<btns.length;b++){
+			if(btns[b].checkPoint({x,y})){
+				btns[b].using = touches[t].identifier;
+				btns[b].ontouchstart({x,y});
+				break;
+			}
+		}
+	}
+},{passive:false});
+window.addEventListener("touchmove",function(e){
+	e = e || window.event;
+	try{e.preventDefault();}catch(er){}
+	for(var i=0;i<e.changedTouches.length;i++){
+		touches[e.changedTouches[i].identifier] = e.changedTouches[i];
+	}
+	for(var t=0;t<touches.length;t++){
+		if(!touches[t]){continue;}
+		var x = touches[t].clientX;
+		var y = touches[t].clientY;
+		for(var b=0;b<btns.length;b++){
+			if(btns[b].using == touches[t].identifier){
+				btns[b].ontouchmove({x,y});
+				break;
+			}
+		}
+	}
+},{passive:false});
+window.addEventListener("touchend",function(e){
+	e = e || window.event;
+	try{e.preventDefault();}catch(er){}
+	for(var i=0;i<e.changedTouches.length;i++){
+		var x = touches[e.changedTouches[i].identifier].clientX;
+		var y = touches[e.changedTouches[i].identifier].clientY;
+		touches[e.changedTouches[i].identifier] = null;
+		for(var b=0;b<btns.length;b++){
+			if(e.changedTouches[i].identifier == btns[b].using){
+				btns[b].using = -1;
+				btns[b].ontouchend({x,y});
+				break;
+			}
+		}
+	}
+},{passive:false});
+window.addEventListener("touchcancel",function(e){
+	e = e || window.event;
+	try{e.preventDefault();}catch(er){}
+	for(var i=0;i<e.changedTouches.length;i++){
+		var x = touches[e.changedTouches[i].identifier].clientX;
+		var y = touches[e.changedTouches[i].identifier].clientY;
+		touches[e.changedTouches[i].identifier] = null;
+		for(var b=0;b<btns.length;b++){
+			if(e.changedTouches[i].identifier == btns[b].using){
+				btns[b].using = -1;
+				btns[b].ontouchcancel({x,y});
+				break;
+			}
+		}
+	}
+},{passive:false});
+window.addEventListener("click",function(e){
+	alert("");
+	moveCam(0,1);
+});
+var scene = new THREE.Scene();
+
+var camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.2, 1000);
+scene.add(camera);
+camera.position.set(0,1,0);
+
+var renderer = new THREE.WebGLRenderer({canvas:cgl});
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+
+var aLight = new THREE.AmbientLight(0xffffff,0.4);
+scene.add(aLight);
+
+var dLight = new THREE.DirectionalLight(0xffffff,0.3);
+dLight.position.set(2,10,0);
+dLight.castShadow = true;
+scene.add(dLight);
+
+/*var dLightCamera = new THREE.CameraHelper(1);
+dLightCamera.position.set(0,7,0);
+scene.add(dLightCamera);*/
+
+/*var fog = new THREE.Fog(0xaaffaa,1,15);
+scene.fog = fog;*/
+
+var box = new THREE.Mesh(
+	new THREE.BoxGeometry(2,2,2),
+	new THREE.MeshLambertMaterial({color:0xffffff})
+);
+box.position.y = 2;
+box.castShadow = true;
+scene.add(box);
+
+
+var plane = new THREE.Mesh(
+	new THREE.PlaneGeometry(20,20),
+	new THREE.MeshLambertMaterial({color:0xffffff})
+);
+plane.rotation.x = -Math.PI/2;
+plane.receiveShadow = true;
+scene.add(plane);
+
+/*var plane2 = new THREE.Mesh(
+	new THREE.PlaneGeometry(20,20),
+	new THREE.MeshLambertMaterial({color:0xffffff})
+);
+plane2.rotation.x = -Math.PI;
+plane2.position.y = 10;
+plane2.position.z = 10;
+plane2.receiveShadow = true;
+scene.add(plane2);
+*/
+var axesHelper = new THREE.AxesHelper(20);
+scene.add(axesHelper);
+
+//var controls = new THREE.OrbitControls(camera, renderer.domElement);
+//controls.update();
+renderer.render(scene,camera);
+/*classes*/
+function Button(area){
+	this.area = area;
+	this.using = -1;
+	this.draw = function(){}
+	this.ontouchstart = function(){}
+	this.ontouchmove = function(){}
+	this.ontouchend = function(){}
+	this.ontouchcancel = function(){}
+	this.checkPoint = function(v2){
+		var w = window.innerWidth, h = window.innerHeight;
+		if(this.area.type == "rect"){
+			return v2.x>this.area.x*w && v2.x<this.area.x*w+this.area.width*w && v2.y>this.area.y*h && v2.y<this.area.y*h+this.area.height*h;
+		}else if(this.area.type == "circle"){
+			var dx = v2.x - this.area.x*w;
+			var dy = v2.y - this.area.y*h;
+			return dx*dx + dy*dy <= this.area.r*this.area.r
+		}else if(this.area.type == "poly"){
+			/*later*/
+		}
+	}
+}
+/*functions*/
+function resize(){
+	camera.aspect = window.innerWidth / window.innerHeight;
+	camera.updateProjectionMatrix();
+	renderer.setSize(window.innerWidth, window.innerHeight);
+	renderer.setPixelRatio(Math.min(2,window.devicePixelRatio));
+	c.width = window.innerWidth;
+	c.height = window.innerHeight;
+}
+
+function moveCam(angle,vel){
+	var rotY = atanAngle(camera.rotation.y+angle);
+	camera.position.x += Math.cos(rotY)*vel;
+	camera.position.z += Math.sin(rotY)*vel;
+}
+function atanAngle(angle){
+	return (angle+Math.PI/2)*-1;
+}
+function circle(cx,cy,cr,fill,stroke){
+	
+	ctx.beginPath();
+	ctx.arc(cx,cy,cr,0,2*Math.PI);
+	if(fill){
+		var tmp = ctx.fillStyle;
+		ctx.fillStyle = fill;
+		ctx.fill();
+		ctx.fillStyle = tmp;
+	}
+	if(stroke){
+		var tmp = ctx.strokeStyle;
+		ctx.strokeStyle = stroke;
+		ctx.stroke();
+		ctx.strokeStyle = tmp;
+	}
+	ctx.closePath();
+}
+var ot = 0;
+function animate(nt){
+	var dt = nt - ot;
+	ot = nt;
+	var fps = 1000 / dt;
+	var w = window.innerWidth,h=window.innerHeight;
+	ctx.clearRect(0,0,c.width,c.height);
+	box.rotation.x+=0.01;
+	box.rotation.y+=0.01;
+//	controls.update();
+	window.p.innerHTML = "camera rotation x = "+ camera.rotation.x.toFixed(4);
+	window.p.innerHTML += "<br>camera rotation y = "+ camera.rotation.y.toFixed(4);
+	window.p.innerHTML += "<br>player.dirAngle = "+ atanAngle(player.dirAngle).toFixed(4);
+	window.p.innerHTML += "<br>fps = "+ Math.round(fps);
+	for(var i=0;i<btns.length;i++){
+		btns[i].draw(w,h);
+	}
+	if(player.isMoving){
+		moveCam(atanAngle(player.dirAngle),player.vel*player.velForce)
+	}
+	renderer.render(scene,camera);
+	requestAnimationFrame(animate);
+}
+</script>
+</body>
+</html>
